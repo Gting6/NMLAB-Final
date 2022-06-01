@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+service VideoProcessor {
+    rpc Compute(VideoRequest) returns (VideoResponse);
+}
+
+message VideoRequest {
+    int64 algorithm = 1;
+}
+
+message VideoResponse {
+    int64 value = 1;
+}
