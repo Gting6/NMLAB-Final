@@ -22,7 +22,7 @@ sys.path.insert(0, BUILD_DIR)
 import video_pb2_grpc
 import video_pb2
 
-
+upload_img_name = ""
 
 
 class VideoServicer(video_pb2_grpc.VideoProcessorServicer):
@@ -49,7 +49,8 @@ class VideoServicer(video_pb2_grpc.VideoProcessorServicer):
             return 2
         elif n == 3:
             q2.put(3)
-            return 3
+            upload_img_name =  str(int(time.time()))
+            return "https://weishemg.s3.ap-northeast-1.amazonaws.com/" + upload_img_name
         else:
             q2.put(0)
             return 0  
@@ -159,9 +160,9 @@ def gstreamer_rtmpstream(queue):
             pass
         elif algorithm == 2:
             # use AWS cloud for detection
-            s = str(int(time.time()))
-            print("uploading ..." + s)
-            aws_upload(frame, s)
+            #s = str(int(time.time()))
+            print("uploading ..." + upload_img_name)
+            aws_upload(frame, upload_img_name)
             print("uploaded!")
             print("judging ...")
             aws_judge(bucket, s + ".PNG", "gting.jpg")
