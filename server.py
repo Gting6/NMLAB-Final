@@ -50,7 +50,7 @@ class VideoServicer(video_pb2_grpc.VideoProcessorServicer):
         elif n == 3:
             q2.put(3)
             upload_img_name =  str(int(time.time()))
-            return "https://weishemg.s3.ap-northeast-1.amazonaws.com/" + upload_img_name
+            return "https://weishemg.s3.ap-northeast-1.amazonaws.com/" + upload_img_name + ".PNG"
         else:
             q2.put(0)
             return 0  
@@ -161,16 +161,19 @@ def gstreamer_rtmpstream(queue):
         elif algorithm == 2:
             # use AWS cloud for detection
             #s = str(int(time.time()))
-            print("uploading ..." + upload_img_name)
+            print("uploading ..." + upload_img_name + ".PNG")
             aws_upload(frame, upload_img_name)
             print("uploaded!")
             print("judging ...")
-            aws_judge(bucket, s + ".PNG", "gting.jpg")
+            aws_judge(bucket, upload_img_name + ".PNG", "gting.jpg")
             algorithm = 1
             pass
         elif algorithm == 3:
-            s = str(int(time.time())) + ".PNG"
-            cv2.imwrite(s, cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            #s = str(int(time.time())) + ".PNG"
+            #cv2.imwrite(s, cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            print("uploading ..." + upload_img_name + ".PNG")
+            aws_upload(frame, upload_img_name)
+            print("uploaded!")
             algorithm = 1
         else: 
             pass
