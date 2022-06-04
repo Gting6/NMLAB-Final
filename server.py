@@ -201,7 +201,8 @@ def gstreamer_rtmpstream(queue):
         if cnt == 100:   
             cnt = 0
             # print("Bug in gstreamer_rtmpstream")
-        writer.write(frame)
+        if is_streaming:
+            writer.write(frame)
 
 def human_detect(image):
     mp_object_detection = mp.solutions.object_detection
