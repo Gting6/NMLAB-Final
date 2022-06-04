@@ -22,7 +22,8 @@ sys.path.insert(0, BUILD_DIR)
 import video_pb2_grpc
 import video_pb2
 
-
+is_streaming = False
+yt_streaming_key = ""
 
 
 class VideoServicer(video_pb2_grpc.VideoProcessorServicer):
@@ -32,6 +33,9 @@ class VideoServicer(video_pb2_grpc.VideoProcessorServicer):
 
     def Compute(self, request, context):
         n = request.algorithm
+        is_streaming = request.is_streaming
+        if is_streaming:
+            yt_streaming_key = request.yt_streaming_key
         value = self._process(n)
 
         response = video_pb2.VideoResponse()
@@ -106,6 +110,27 @@ def gstreamer_camera(queue):
         cap.release()
     # pass
 
+def rtmp_pipeline(
+    streaming_key=" "
+):
+    return (
+        "appsrc ! "
+        "video/x-raw, format=(string)BGR ! "
+        "queue ! "
+        "videoconvert ! "
+        "video/x-raw, format=RGBA ! "
+        "nvvidconv ! "
+        "nvv4l2h264enc bitrate=500000 ! "
+        "h264parse ! "
+        "flvmux streamable=true name=mux ! "
+        'rtmpsink location="rtmp://a.rtmp.youtube.com/live2/%s app=live2" audiotestsrc ! '
+        "voaacenc bitrate=128000 ! "
+        "mux. "
+        % (
+            streaming_key
+        )
+    )
+
 
 def gstreamer_rtmpstream(queue):
     # Use the provided pipeline to construct the video writer in opencv
@@ -139,7 +164,7 @@ def gstreamer_rtmpstream(queue):
         "mux. "
     )
 
-    writer = cv2.VideoWriter(pipeline2, 0, 30.0, (1280, 720))
+    writer = cv2.VideoWriter(rtmp_pipeline(streaming_key=yt_streaming_key), 0, 30.0, (1280, 720))
 
     algorithm = 0
     cnt = 0
