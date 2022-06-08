@@ -23,7 +23,8 @@ import video_pb2_grpc
 import video_pb2
 
 
-
+import requests
+url = 'https://nmlab-securitycam.herokuapp.com/api/alert'
 
 class VideoServicer(video_pb2_grpc.VideoProcessorServicer):
 
@@ -134,7 +135,7 @@ def gstreamer_rtmpstream(queue):
         "nvv4l2h264enc bitrate=500000 ! "
         "h264parse ! "
         "flvmux streamable=true name=mux ! "
-        'rtmpsink location="rtmp://a.rtmp.youtube.com/live2/wc7z-954g-8ged-vx8g-eq28 app=live2" audiotestsrc ! '
+        'rtmpsink location="rtmp://a.rtmp.youtube.com/live2/jvmm-p5zf-79ux-ywtq-a9pp app=live2" audiotestsrc ! '
         "voaacenc bitrate=128000 ! "
         "mux. "
     )
@@ -173,10 +174,12 @@ def gstreamer_rtmpstream(queue):
             algorithm = 1
         else: 
             pass
+
         if cnt == 100:   
+            print(human_detect(frame))
             cnt = 0
             # print("Bug in gstreamer_rtmpstream")
-        writer.write(frame)
+        # writer.write(frame)
 
 def human_detect(image):
     mp_object_detection = mp.solutions.object_detection
@@ -192,9 +195,23 @@ def human_detect(image):
             for i in range(len(results.detections)):
                 if "person" in results.detections[i].label:
                     # if results.detections[i].score > 0.5:
-                    if results.detections[i].score[0] > 0.3:
+                    if results.detections[i].score[0] > 0.5:
                         print("Hi Human")
                         print(results.detections[i].score[0])
+                    if results.detections[i].score[0] > 0.5:
+                        s = str(int(time.time()))
+                        print("uploading ..." + s)
+                        tmp = 0
+                        for i in range(5):
+                            if not q.empty():
+                                frame = q.get(0)
+                            else:
+                                break
+                        aws_upload(frame, s)
+                        print("uploaded! Now calling api")
+                        obj = {"id":"gting0906", "img_url":("https://weishemg.s3.ap-northeast-1.amazonaws.com/"+s+".PNG")}
+                        x = requests.post(url, data =obj)
+                        print("Calling api result:", x)
                     return 1
                 else:
                     pass
@@ -222,6 +239,8 @@ def aws_upload(image, name):
     sent_data = s3.put_object(Bucket=bucket, Key=key, Body=buffer,ContentType='image/png')
     if sent_data['ResponseMetadata']['HTTPStatusCode'] != 200:
         print("Error when upload!")
+    
+    return "https://weishemg.s3.ap-northeast-1.amazonaws.com/" + key
     # s3.upload_fileobj(image, bucket, str(time))
 
 def aws_judge(bucket, photo1, photo2):
