@@ -47,6 +47,7 @@ def gstreamer_camera(queue):
             if cnt % 10 == 0:
                 queue.put(frame)
                 cnt = 0
+                continue
             cnt += 1
             queue.put(frame)
     except KeyboardInterrupt as e:
@@ -110,10 +111,11 @@ def gstreamer_rtmpstream(queue):
             aws_upload(frame, s)
             print("uploaded! Now calling api")
             obj = {"id":"gting0906", "img_url":("https://weishemg.s3.ap-northeast-1.amazonaws.com/"+s+".PNG")}
-            _ = requests.post(url, data =obj)
+            _ = requests.post(url + "snapshot", data =obj)
             algorithm = 0
         else: 
             pass
+        # writer.write(frame)
         # if cnt == 100:   
         #     print(human_detect(frame))
         #     cnt = 0
@@ -133,7 +135,6 @@ def human_detect(image):
                     if results.detections[i].score[0] > 0.5:
                         print("Hi Human")
                         print(results.detections[i].score[0])
-                    if results.detections[i].score[0] > 0.5:
                         s = str(int(time.time()))
                         print("uploading ..." + s)
                         tmp = 0
@@ -145,7 +146,7 @@ def human_detect(image):
                         aws_upload(frame, s)
                         print("uploaded! Now calling api")
                         obj = {"id":"gting0906", "img_url":("https://weishemg.s3.ap-northeast-1.amazonaws.com/"+s+".PNG")}
-                        x = requests.post(url, data =obj)
+                        x = requests.post(url + "alert", data =obj)
                         print("Calling api result:", x)
                     return 1
                 else:
@@ -224,7 +225,7 @@ if __name__ == "__main__":
     broker = 'broker.emqx.io'
     port = 1883
     topic = "c2fd964cd38b477fa55c6d15ac8a8df70557cad8"
-    url = 'https://nmlab-securitycam.herokuapp.com/api/alert'
+    url = 'https://nmlab-securitycam.herokuapp.com/api/'
     # generate client ID with pub prefix randomly
     client_id = f'python-mqtt-{random.randint(0, 100)}'
     username = 'emqx'
