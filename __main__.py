@@ -18,6 +18,7 @@ from PIL import Image
 import requests
 import random
 from paho.mqtt import client as mqtt_client
+import argparse
 
 
 def gstreamer_camera(queue):
@@ -53,9 +54,10 @@ def gstreamer_camera(queue):
     except KeyboardInterrupt as e:
         cap.release()
 
-def gstreamer_rtmpstream(queue):
-    # Use the provided pipeline to construct the video writer in opencv
-    pipeline2 = (
+def rtmp_pipeline(
+    streaming_key=" "
+):
+    return (
         "appsrc ! "
         "video/x-raw, format=(string)BGR ! "
         "queue ! "
@@ -65,32 +67,40 @@ def gstreamer_rtmpstream(queue):
         "nvv4l2h264enc bitrate=500000 ! "
         "h264parse ! "
         "flvmux streamable=true name=mux ! "
-        'rtmpsink location="rtmp://a.rtmp.youtube.com/live2/jvmm-p5zf-79ux-ywtq-a9pp app=live2" audiotestsrc ! '
+        'rtmpsink location="rtmp://a.rtmp.youtube.com/live2/%s app=live2" audiotestsrc ! '
         "voaacenc bitrate=128000 ! "
         "mux. "
+        % (
+            streaming_key
+        )
     )
 
-    writer = cv2.VideoWriter(pipeline2, 0, 30.0, (1280, 720))
+def gstreamer_rtmpstream(queue):
     print("?")
     algorithm = 0
     cnt = 0
+    enable = False
+    streamming_enable = False
+    pipeline2 = ""
+    writer = ""
     while True:
         frame = queue.get()
         cnt += 1
         if not q2.empty():
-            algorithm = eval(q2.get())['command']  
-            # print(type(algorithm))
+            payload = eval(q2.get())
+            algorithm = payload['command']  
 
             # print("setting alg to", algorithm['command'])
-        if algorithm == 1:
-            # use mediapipe for detection
-            if cnt == 20:   
-                print(human_detect(frame))
-                cnt = 0
-            else:
-                pass
-                # print("qq")
-            pass
+        if algorithm == "stream_on":
+            print("Start streamming!")
+            streamming_enable = True
+            pipeline2 = rtmp_pipeline(payload['stream_key'])
+            writer = cv2.VideoWriter(pipeline2, 0, 30.0, (1280, 720))
+            algorithm = 0
+        elif algorithm == "stream_off":
+            streamming_enable = False
+            print("Stop streamming!")
+            algorithm = 0
         elif algorithm == 2:
             # use AWS cloud for detection
             s = str(int(time.time()))
@@ -101,24 +111,26 @@ def gstreamer_rtmpstream(queue):
             aws_judge(bucket, s + ".PNG", "gting.jpg")
             algorithm = 1
             pass
-        elif algorithm == 3:
-            s = str(int(time.time())) + ".PNG"
-            cv2.imwrite(s, cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            algorithm = 1
-        elif algorithm == "snapshot":
+        elif algorithm == "alert":
+            enable = payload['enable']
+            print("??", enable, type(enable))
+            algorithm = 0
+        elif algorithm == "snapshot":   
             s = str(int(time.time()))
             print("uploading ..." + s)
             aws_upload(frame, s)
             print("uploaded! Now calling api")
-            obj = {"id":"gting0906", "img_url":("https://weishemg.s3.ap-northeast-1.amazonaws.com/"+s+".PNG")}
+            obj = {"id":args.lineID, "img_url":("https://weishemg.s3.ap-northeast-1.amazonaws.com/"+s+".PNG")}
             _ = requests.post(url + "snapshot", data =obj)
             algorithm = 0
         else: 
             pass
-        # writer.write(frame)
-        # if cnt == 100:   
-        #     print(human_detect(frame))
-        #     cnt = 0
+        if streamming_enable == True:
+            writer.write(frame)
+        if cnt == 100:
+            cnt = 0
+            if enable == True: 
+                print(human_detect(frame))
 
 def human_detect(image):
     mp_object_detection = mp.solutions.object_detection
@@ -145,7 +157,7 @@ def human_detect(image):
                                 break
                         aws_upload(frame, s)
                         print("uploaded! Now calling api")
-                        obj = {"id":"gting0906", "img_url":("https://weishemg.s3.ap-northeast-1.amazonaws.com/"+s+".PNG")}
+                        obj = {"id":args.lineID, "img_url":("https://weishemg.s3.ap-northeast-1.amazonaws.com/"+s+".PNG")}
                         x = requests.post(url + "alert", data =obj)
                         print("Calling api result:", x)
                     return 1
@@ -191,6 +203,7 @@ def aws_judge(bucket, photo1, photo2):
 def connect_mqtt() -> mqtt_client:
     def on_connect(client, userdata, flags, rc):
         if rc == 0:
+            # pass
             print("Connected to MQTT Broker!")
         else:
             print("Failed to connect, return code %d\n", rc)
@@ -205,7 +218,11 @@ def connect_mqtt() -> mqtt_client:
 def subscribe(client: mqtt_client, queue):
     def on_message(client, userdata, msg):
         print(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
-        queue.put(msg.payload.decode())
+        print("Type",type(msg.payload.decode()))
+        s = msg.payload.decode()
+        s = s.replace("true", "True")
+        s = s.replace("false", "False")
+        queue.put(s)
 
     client.subscribe(topic)
     client.on_message = on_message
@@ -230,10 +247,16 @@ if __name__ == "__main__":
     client_id = f'python-mqtt-{random.randint(0, 100)}'
     username = 'emqx'
     password = 'public'
+    parser = argparse.ArgumentParser(description='Basic settings for user')
+    parser.add_argument('--lineID', required=True, help='LineID for linebot')
+
+    args = parser.parse_args()
+    print("Welcome,", args.lineID)
 
     try:
         q = multiprocess.Queue(maxsize=300)
         q2 = multiprocess.Queue(maxsize=10)
+
 
         p1 = multiprocess.Process(target=gstreamer_camera, args=(q, ))
         p2 = multiprocess.Process(target=gstreamer_rtmpstream, args=(q,))
@@ -242,6 +265,7 @@ if __name__ == "__main__":
         p1.start()
         p2.start()
         p3.start()
+
 
         p1.join()
         p2.join()
