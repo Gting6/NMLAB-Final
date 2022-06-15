@@ -76,11 +76,11 @@ def rtmp_pipeline(
     )
 
 def gstreamer_rtmpstream(queue):
-    print("?")
     algorithm = 0
     cnt = 0
     enable = False
     streamming_enable = False
+    whitelist_enable = False
     pipeline2 = ""
     writer = ""
     while True:
@@ -100,28 +100,24 @@ def gstreamer_rtmpstream(queue):
         elif algorithm == "stream_off":
             streamming_enable = False
             print("Stop streamming!")
+            writer.release()
             algorithm = 0
-        elif algorithm == 2:
-            # use AWS cloud for detection
-            s = str(int(time.time()))
-            print("uploading ..." + s)
-            aws_upload(frame, s)
-            print("uploaded!")
-            print("judging ...")
-            aws_judge(bucket, s + ".PNG", "gting.jpg")
-            algorithm = 1
-            pass
+        elif algorithm == "whitelist_on":
+            print("Start whitelist service!")
+            whitelist_enable = True
+            algorithm = 0
         elif algorithm == "alert":
             enable = payload['enable']
-            print("??", enable, type(enable))
             algorithm = 0
         elif algorithm == "snapshot":   
             s = str(int(time.time()))
             print("uploading ..." + s)
             aws_upload(frame, s)
             print("uploaded! Now calling api")
-            obj = {"id":args.lineID, "img_url":("https://weishemg.s3.ap-northeast-1.amazonaws.com/"+s+".PNG")}
-            _ = requests.post(url + "snapshot", data =obj)
+            obj = {"id":args.lineID, "img_url":("https://nmlab-final-securitycam.s3.ap-northeast-1.amazonaws.com/"+s+".PNG")}
+            x = requests.post(url + "snapshot", data =obj)
+            if x.status_code == 404:
+                print("server failed!")
             algorithm = 0
         else: 
             pass
@@ -130,9 +126,11 @@ def gstreamer_rtmpstream(queue):
         if cnt == 100:
             cnt = 0
             if enable == True: 
-                print(human_detect(frame))
-
-def human_detect(image):
+                if whitelist_enable == True:
+                    print(human_detect(frame, True))
+                else:
+                    print(human_detect(frame, False))
+def human_detect(image, aws = False):
     mp_object_detection = mp.solutions.object_detection
     # For static images:
 
@@ -144,7 +142,7 @@ def human_detect(image):
             for i in range(len(results.detections)):
                 if "person" in results.detections[i].label:
                     # if results.detections[i].score > 0.5:
-                    if results.detections[i].score[0] > 0.5:
+                    if results.detections[i].score[0] > 0.5 and aws == False:
                         print("Hi Human")
                         print(results.detections[i].score[0])
                         s = str(int(time.time()))
@@ -155,12 +153,59 @@ def human_detect(image):
                                 frame = q.get(0)
                             else:
                                 break
+                            
                         aws_upload(frame, s)
                         print("uploaded! Now calling api")
-                        obj = {"id":args.lineID, "img_url":("https://weishemg.s3.ap-northeast-1.amazonaws.com/"+s+".PNG")}
+                        obj = {"id":args.lineID, "img_url":("https://nmlab-final-securitycam.s3.ap-northeast-1.amazonaws.com/"+s+".PNG")}
                         x = requests.post(url + "alert", data =obj)
+                        if x.status_code == 404:
+                            print("server failed!")
                         print("Calling api result:", x)
-                    return 1
+                        return 1
+                    if results.detections[i].score[0] > 0.5 and aws == True:
+                        print("Hi Human AWS mode")
+                        print(results.detections[i].score[0])
+                        s = str(int(time.time()))
+                        print("uploading ..." + s)
+                        tmp = 0
+                        for i in range(5):
+                            if not q.empty():
+                                frame = q.get(0)
+                            else:
+                                break
+                        aws_upload(frame, s)
+                        print("uploaded! Now judging whitelist")
+                        obj = {"id":args.lineID}
+                        x = requests.post(url + "whitelist", data =obj)
+                        if x.status_code == 404:
+                            print("Server failed!")
+                            return 0
+                        if x != []:
+                            print("Hello, whitelist", x, type(x[0]), len(x))
+                            flag = 0
+                            for i in x:
+                                print("judging ..." + s + " and" + " i")
+                                try:
+                                    flag |= aws_judge(s+".PNG", i[64:])
+                                except:
+                                    print(i)
+                                    result = 0
+                            if flag == 0:
+                                obj = {"id":args.lineID, "img_url":("https://nmlab-final-securitycam.s3.ap-northeast-1.amazonaws.com/"+s+".PNG")}
+                                x = requests.post(url + "alert", data =obj)
+                                if x.status_code == 404:
+                                    print("server failed!")
+                                print("Calling api result:", x)
+                                return 1
+                        else:
+                            obj = {"id":args.lineID, "img_url":("https://nmlab-final-securitycam.s3.ap-northeast-1.amazonaws.com/"+s+".PNG")}
+                            x = requests.post(url + "alert", data =obj)
+                            if x.status_code == 404:
+                                print("server failed!")
+                            return 1
+
+
+
                 else:
                     pass
                     # print("No Human")
@@ -178,9 +223,9 @@ def aws_upload(image, name):
     sent_data = s3.put_object(Bucket=bucket, Key=key, Body=buffer,ContentType='image/png')
     if sent_data['ResponseMetadata']['HTTPStatusCode'] != 200:
         print("Error when upload!")
-    return "https://weishemg.s3.ap-northeast-1.amazonaws.com/" + key
+    return "https://nmlab-final-securitycam.s3.ap-northeast-1.amazonaws.com/" + key
 
-def aws_judge(bucket, photo1, photo2):
+def aws_judge(photo1, photo2, bucket = 'nmlab-final-securitycam'):
     client = boto3.client('rekognition')
     response = client.compare_faces(
         SourceImage={
@@ -195,10 +240,13 @@ def aws_judge(bucket, photo1, photo2):
                 'Name': photo2,
             }
         },
-        SimilarityThreshold=0,
+        SimilarityThreshold=50,
     )
-
     print(response)
+    if len(response['FaceMatches']) == 0:
+        return False
+    return True
+
 
 def connect_mqtt() -> mqtt_client:
     def on_connect(client, userdata, flags, rc):
@@ -237,7 +285,7 @@ def run(queue):
 
 
 if __name__ == "__main__":
-    bucket = 'weishemg'
+    bucket = 'nmlab-final-securitycam'
     s3 = boto3.client('s3')
     broker = 'broker.emqx.io'
     port = 1883
