@@ -1,2 +1,9 @@
-pip install Pillow
-set key
+argparse
+opencv-python
+multiprocess
+numpy
+boto
+requires.io
+Pillow
+requests
+paho-mqtt
