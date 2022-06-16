@@ -106,6 +106,10 @@ def gstreamer_rtmpstream(queue):
             print("Start whitelist service!")
             whitelist_enable = True
             algorithm = 0
+        elif algorithm == "whitelist_off":
+            print("Start whitelist service!")
+            whitelist_enable = False
+            algorithm = 0
         elif algorithm == "alert":
             enable = payload['enable']
             algorithm = 0
@@ -142,7 +146,7 @@ def human_detect(image, aws = False):
             for i in range(len(results.detections)):
                 if "person" in results.detections[i].label:
                     # if results.detections[i].score > 0.5:
-                    if results.detections[i].score[0] > 0.5 and aws == False:
+                    if results.detections[i].score[0] > 0.65 and aws == False:
                         print("Hi Human")
                         print(results.detections[i].score[0])
                         s = str(int(time.time()))
@@ -162,7 +166,7 @@ def human_detect(image, aws = False):
                             print("server failed!")
                         print("Calling api result:", x)
                         return 1
-                    if results.detections[i].score[0] > 0.5 and aws == True:
+                    if results.detections[i].score[0] > 0.65 and aws == True:
                         print("Hi Human AWS mode")
                         print(results.detections[i].score[0])
                         s = str(int(time.time()))
@@ -181,12 +185,15 @@ def human_detect(image, aws = False):
                             print("Server failed!")
                             return 0
                         if x != []:
-                            print("Hello, whitelist", x, type(x[0]), len(x))
+                            x = eval(x.text.encode())["whitelist"]
+                            print(x)
+                            # print("Hello, whitelist", x, type(x[0]), len(x))
                             flag = 0
                             for i in x:
-                                print("judging ..." + s + " and" + " i")
+                                t = i.split("aws.com/")[1]
+                                print("judging ..." + s + " and" + " i", t)
                                 try:
-                                    flag |= aws_judge(s+".PNG", i[64:])
+                                    flag |= aws_judge(s+".PNG", t)
                                 except:
                                     print(i)
                                     result = 0
